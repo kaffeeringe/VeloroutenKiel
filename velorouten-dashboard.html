@@ -1,0 +1,423 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Velorouten in Kiel – Status-Dashboard</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+      integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="">
+<style>
+  :root {
+    --kiel-blau: #00223f;
+    --kiel-cyan: #009ee0;
+    --kiel-magenta: #9d62a0;
+    --kiel-pink: #e30059;
+    --s-wirtschaft: #1f82c0;
+    --s-sport: #24accb;
+    --s-mobilitaet: #46b394;
+    --s-umwelt: #4faf6c;
+    --bg: #f4f6f8;
+    --card: #ffffff;
+    --text: #1c2b39;
+    --muted: #5b6b7a;
+    --border: #dde4ea;
+    --premium: #e30059;
+    --haupt: #009ee0;
+    --neben: #9d62a0;
+    --umgesetzt: #4faf6c;
+    --in-umsetzung: #1f82c0;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: "Segoe UI", "Helvetica Neue", Arial, sans-serif; background: var(--bg); color: var(--text); line-height: 1.5; }
+  header { background: var(--kiel-blau); color: #fff; padding: 28px 32px 24px; border-bottom: 6px solid var(--kiel-cyan); }
+  header h1 { font-size: 1.7rem; font-weight: 700; letter-spacing: .2px; }
+  header p { color: #bcd8ea; margin-top: 6px; font-size: .95rem; max-width: 78ch; }
+  header p a { color: var(--kiel-cyan); }
+  main { max-width: 1180px; margin: 0 auto; padding: 24px 20px 48px; }
+  section { margin-top: 28px; }
+  h2 { color: var(--kiel-blau); font-size: 1.25rem; margin-bottom: 14px; }
+  .kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 16px; }
+  .kpi { background: var(--card); border: 1px solid var(--border); border-radius: 10px; padding: 18px 20px; border-top: 5px solid var(--kiel-cyan); }
+  .kpi .value { font-size: 2rem; font-weight: 700; color: var(--kiel-blau); }
+  .kpi .label { color: var(--muted); font-size: .9rem; margin-top: 2px; }
+  .kpi .sub { font-size: .8rem; margin-top: 6px; }
+  .kpi.done { border-top-color: var(--umgesetzt); } .kpi.done .value { color: var(--umgesetzt); }
+  .kpi.prog { border-top-color: var(--in-umsetzung); } .kpi.prog .value { color: var(--in-umsetzung); }
+  .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+  @media (max-width: 900px) { .grid-2 { grid-template-columns: 1fr; } }
+  .card { background: var(--card); border: 1px solid var(--border); border-radius: 10px; padding: 20px; }
+  .card h3 { color: var(--kiel-blau); font-size: 1.05rem; margin-bottom: 12px; }
+  .legend { display: flex; flex-wrap: wrap; gap: 14px; margin-top: 12px; font-size: .85rem; color: var(--muted); }
+  .legend .item { display: flex; align-items: center; gap: 6px; }
+  .swatch { width: 14px; height: 14px; border-radius: 3px; display: inline-block; }
+  .swatch.line { width: 22px; height: 0; border-top: 4px solid currentColor; border-radius: 0; }
+  .swatch.line.dashed { border-top-style: dashed; }
+  #map { width: 100%; height: 560px; border-radius: 8px; border: 1px solid var(--border); z-index: 0; }
+  #map-note { font-size: .82rem; color: var(--muted); margin-top: 8px; }
+  .filters { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 14px; align-items: center; }
+  .filters .group-label { font-size: .85rem; color: var(--muted); margin-right: 4px; font-weight: 600; }
+  .chip { border: 1px solid var(--border); background: #fff; color: var(--text); border-radius: 999px; padding: 5px 14px; font-size: .85rem; cursor: pointer; }
+  .chip:hover { border-color: var(--kiel-cyan); }
+  .chip.active { background: var(--kiel-blau); color: #fff; border-color: var(--kiel-blau); }
+  table { width: 100%; border-collapse: collapse; background: var(--card); border-radius: 10px; overflow: hidden; }
+  th, td { padding: 10px 14px; text-align: left; font-size: .92rem; }
+  thead th { background: var(--kiel-blau); color: #fff; font-weight: 600; }
+  tbody tr { border-top: 1px solid var(--border); }
+  tbody tr:hover { background: #f0f6fa; }
+  td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
+  .badge { display: inline-block; padding: 2px 10px; border-radius: 999px; font-size: .78rem; font-weight: 600; color: #fff; }
+  .badge.premium { background: var(--premium); } .badge.haupt { background: var(--haupt); }
+  .badge.neben { background: var(--neben); } .badge.done { background: var(--umgesetzt); } .badge.prog { background: var(--in-umsetzung); }
+  .bar-wrap { display: flex; height: 10px; border-radius: 5px; overflow: hidden; background: #e6ebf0; }
+  .bar-done { background: var(--umgesetzt); } .bar-prog { background: var(--in-umsetzung); }
+  footer { max-width: 1180px; margin: 0 auto; padding: 0 20px 32px; color: var(--muted); font-size: .82rem; }
+  footer a { color: var(--kiel-cyan); }
+  .leaflet-container { font-family: inherit; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Velorouten in Kiel – Status-Dashboard</h1>
+  <p>Ausbau-Status aller im Kieler Stadtgebiet verzeichneten Velorouten (Premiumrouten, Hauptrouten, Nebenrouten).
+  Daten: <a href="https://opendata.schleswig-holstein.de/v2/dataset/velorouten-in-kiel">Open-Data Schleswig-Holstein – „Velorouten in Kiel“</a>
+  (Landeshauptstadt Kiel, CC BY 4.0), live abgerufen über die Datenschnittstelle. Hintergrundkarte:
+  <a href="https://www.openstreetmap.org/copyright">© OpenStreetMap-Mitwirkende</a>. Stand der Auswertung: 13.11.2026.</p>
+</header>
+<main>
+  <section class="kpis">
+    <div class="kpi"><div class="value" id="kpi-total">–</div><div class="label">Abschnitte gesamt</div><div class="sub" id="kpi-total-sub"></div></div>
+    <div class="kpi done"><div class="value" id="kpi-done">–</div><div class="label">umgesetzt</div><div class="sub" id="kpi-done-sub"></div></div>
+    <div class="kpi prog"><div class="value" id="kpi-prog">–</div><div class="label">in Umsetzung</div><div class="sub" id="kpi-prog-sub"></div></div>
+    <div class="kpi"><div class="value" id="kpi-km">–</div><div class="label">Kilometer in Umsetzung</div><div class="sub">Summe der „in Umsetzung“-Abschnitte</div></div>
+  </section>
+
+  <section class="grid-2">
+    <div class="card">
+      <h3>Umsetzungsgrad gesamt</h3>
+      <svg id="donut" viewBox="0 0 120 120" width="180" height="180" role="img" aria-label="Umsetzungsgrad"></svg>
+      <div class="legend">
+        <span class="item"><span class="swatch" style="background:var(--umgesetzt)"></span>umgesetzt</span>
+        <span class="item"><span class="swatch" style="background:var(--in-umsetzung)"></span>in Umsetzung</span>
+      </div>
+    </div>
+    <div class="card">
+      <h3>Abschnitte nach Routentyp und Status</h3>
+      <svg id="bars" viewBox="0 0 420 240" width="100%" role="img" aria-label="Abschnitte nach Typ"></svg>
+      <div class="legend">
+        <span class="item"><span class="swatch" style="background:var(--premium)"></span>Premiumroute</span>
+        <span class="item"><span class="swatch" style="background:var(--haupt)"></span>Hauptroute</span>
+        <span class="item"><span class="swatch" style="background:var(--neben)"></span>Nebenroute</span>
+        <span class="item"><span class="swatch" style="background:var(--in-umsetzung)"></span>davon in Umsetzung</span>
+      </div>
+    </div>
+  </section>
+
+  <section class="card">
+    <h3>Karte: Velorouten in Kiel auf OpenStreetMap</h3>
+    <div id="map"></div>
+    <p id="map-note">Kartendaten werden live von der Open-Data-Schnittstelle geladen.</p>
+    <div class="legend">
+      <span class="item"><span class="swatch line" style="color:var(--premium)"></span>Premiumroute</span>
+      <span class="item"><span class="swatch line" style="color:var(--haupt)"></span>Hauptroute</span>
+      <span class="item"><span class="swatch line" style="color:var(--neben)"></span>Nebenroute</span>
+      <span class="item"><span class="swatch line dashed" style="color:var(--in-umsetzung)"></span>in Umsetzung (gestrichelt)</span>
+    </div>
+  </section>
+
+  <section>
+    <h2>Routen im Detail</h2>
+    <div class="filters">
+      <span class="group-label">Typ:</span>
+      <button class="chip active" data-filter-typ="alle">Alle</button>
+      <button class="chip" data-filter-typ="Premiumroute">Premiumrouten</button>
+      <button class="chip" data-filter-typ="Hauptroute">Hauptrouten</button>
+      <button class="chip" data-filter-typ="Nebenroute">Nebenrouten</button>
+    </div>
+    <div class="filters">
+      <span class="group-label">Status:</span>
+      <button class="chip active" data-filter-stand="alle">Alle</button>
+      <button class="chip" data-filter-stand="umgesetzt">umgesetzt</button>
+      <button class="chip" data-filter-stand="in Umsetzung">in Umsetzung</button>
+    </div>
+    <table id="routen-tabelle">
+      <thead>
+        <tr>
+          <th>Route</th><th>Typ</th>
+          <th class="num">Abschnitte gesamt</th><th class="num">umgesetzt</th><th class="num">in Umsetzung</th>
+          <th class="num">km in Umsetzung</th><th>Fortschritt</th><th>Status</th>
+        </tr>
+      </thead>
+      <tbody></tbody>
+    </table>
+  </section>
+</main>
+<footer>
+  <p>Quelle: Datensatz „Velorouten in Kiel“, Landeshauptstadt Kiel / Amt für Bauordnung, Vermessung und Geoinformation,
+  Lizenz <a href="https://creativecommons.org/licenses/by/4.0/deed.de">CC BY 4.0</a> via
+  <a href="https://opendata.schleswig-holstein.de/v2/dataset/velorouten-in-kiel">Open-Data Schleswig-Holstein</a>
+  (Abruf: odw.odi.schleswig-holstein.de, Geometrien EPSG:25832). Hintergrundkarte:
+  <a href="https://www.openstreetmap.org/copyright">© OpenStreetMap-Mitwirkende</a> (Kacheln: tile.openstreetmap.org).
+  Kartendarstellung: <a href="https://leafletjs.com/">Leaflet</a>.
+  Farben gemäß Corporate Design der Landeshauptstadt Kiel (Kiel-Blau #00223f, Kiel-Cyan #009ee0, Kiel-Magenta #9d62a0, Kiel-Pink #e30059). Erstellt am 13.11.2026.</p>
+</footer>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+        integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+<script>
+"use strict";
+const API = "https://odw.odi.schleswig-holstein.de/api/datasets/velorouten-in-kiel/content";
+const FALLBACK_SEGMENTS = [{"fid":3526,"route":1,"wkt":"MULTILINESTRING ((32573683.66500000 6025126.78960000 32573527.38460000 6024871.78900000))"},{"fid":3529,"route":1,"wkt":"MULTILINESTRING ((32576637.74730000 6020809.56400000 32576635.30150000 6020821.10800000 32576635.49720000 6020831.67370000 32576643.72270000 6020881.76790000))"},{"fid":3711,"route":2,"wkt":"MULTILINESTRING ((32573030.57900000 6024410.46620000 32573030.53130000 6024408.31000000 32573022.82390000 6024386.60550000 32572995.94940000 6024342.48180000 32572994.11490000 6024339.50370000 32572992.61400000 6024335.52490000 32572983.10780000 6024292.87830000 32572978.91460000 6024278.48810000 32572975.67450000 6024276.20090000 32572972.91080000 6024272.86540000 32572964.04790000 6024234.98380000 32572962.18960000 6024230.40940000 32572954.99440000 6024221.59420000 32572952.70720000 6024217.01980000 32572930.08810000 6024148.02520000 32572894.38390000 6024041.66850000 32572886.85520000 6024014.98460000 32572885.71160000 6024002.98500000 32572888.25320000 6023979.50340000 32572892.33490000 6023953.32570000 32572899.95890000 6023929.02430000 32572910.25130000 6023907.24430000 32572922.35430000 6023887.70000000 32572935.41040000 6023874.70350000 32572952.08780000 6023863.74410000 32572968.81290000 6023857.26530000 32572989.58820000 6023853.83290000 32572992.49480000 6023852.78460000))"},{"fid":3720,"route":10,"wkt":"MULTILINESTRING ((32573117.28550000 6022814.95200000 32573112.76810000 6022813.86780000 32573105.49490000 6022809.44060000 32573095.60160000 6022798.64380000 32573073.82730000 6022771.53890000 32573052.77570000 6022746.60230000 32573024.76730000 6022720.17500000 32572998.15920000 6022698.21990000 32572971.32530000 6022677.41690000 32572958.81190000 6022664.58720000 32572947.69880000 6022650.44740000 32572936.54060000 6022635.22350000 32572921.49740000 6022615.12060000 32572909.57120000 6022600.84540000 32572888.70040000 6022579.88420000 32572859.96910000 6022555.58010000 32572839.21600000 6022538.82790000 32572826.53370000 6022523.90660000))"},{"fid":3723,"route":10,"wkt":"MULTILINESTRING ((32571614.34580000 6018362.56360000 32571614.32040000 6018358.82920000 32571615.22390000 6018357.06740000 32571658.54660000 6018299.28860000 32571662.79310000 6018294.54530000 32571667.26540000 6018293.77730000 32571671.19560000 6018294.63560000 32571696.35800000 6018296.44260000 32571700.24310000 6018295.53910000 32571703.40530000 6018293.50620000 32571712.66620000 6018278.14680000 32571728.52260000 6018249.14450000 32571736.42820000 6018238.39280000 32571745.19210000 6018230.75830000 32571786.57240000 6018205.50550000 32571821.35710000 6018184.45390000 32571871.59160000 6018163.04100000 32571895.98610000 6018155.73950000 32571964.38090000 6018139.55010000 32572000.61120000 6018132.77380000 32572029.88460000 6018131.32660000 32572066.16010000 6018135.44880000 32572090.14800000 6018139.59520000 32572093.89750000 6018139.14350000 32572096.96940000 6018136.92990000 32572096.96940000 6018133.54190000 32572095.88520000 6018128.52740000))"},{"fid":3724,"route":2,"wkt":"MULTILINESTRING ((32573576.31230000 6026047.55910000 32573583.94760000 6025946.04410000 32573570.97550000 6025858.48460000 32573563.54220000 6025824.46730000 32573548.10360000 6025772.90550000 32573534.18990000 6025713.20030000 32573532.64130000 6025710.98460000 32573530.09200000 6025709.81710000))"},{"fid":3729,"route":2,"wkt":"MULTILINESTRING ((32573232.43000000 6020575.33940000 32573211.37430000 6020521.53790000 32573189.45540000 6020465.76410000 32573172.49200000 6020434.31520000 32573157.61500000 6020411.53260000))"},{"fid":3742,"route":1,"wkt":"MULTILINESTRING ((32573621.15090000 6024075.88500000 32573656.07640000 6024014.93660000 32573701.36260000 6023941.43310000 32573725.10280000 6023908.56210000 32573735.14670000 6023890.30040000 32573741.92960000 6023868.64720000 32573742.45140000 6023814.12300000 32573743.49490000 6023799.51360000 32573760.23530000 6023734.81500000 32573769.38740000 6023700.37870000 32573776.43120000 6023686.81280000 32573784.51850000 6023681.85610000))"},{"fid":3743,"route":1,"wkt":"MULTILINESTRING ((32573784.51850000 6023681.85610000 32573794.69290000 6023677.67000000 32573806.43260000 6023673.24700000 32573959.04820000 6023602.28720000 32574032.35590000 6023564.19850000 32574059.22670000 6023545.67590000 32574080.68420000 6023520.89220000 32574098.61980000 6023493.49960000 32574105.28050000 6023481.75460000))"},{"fid":3745,"route":1,"wkt":"MULTILINESTRING ((32575449.25110000 6019365.34690000 32575506.03660000 6019405.76570000 32575512.20200000 6019413.08620000 32575545.92700000 6019437.62050000 32575665.59820000 6019523.03240000 32575759.84730000 6019593.89390000 32575776.38540000 6019607.41680000 32575783.44040000 6019614.48650000 32575793.05850000 6019625.62540000 32575801.63190000 6019638.12070000 32575821.99500000 6019685.59460000 32575850.17380000 6019747.46690000 32575857.97100000 6019767.08280000 32575862.71490000 6019786.31200000 32575865.94710000 6019829.42410000 32575876.03860000 6019840.96820000))"},{"fid":3747,"route":1,"wkt":"MULTILINESTRING ((32574891.65410000 6019334.71710000 32574987.38640000 6019282.71980000 32575005.06770000 6019275.72360000 32575025.33780000 6019268.94940000 32575037.07030000 6019266.41560000 32575051.77720000 6019264.59790000 32575065.98830000 6019264.12970000 32575112.55800000 6019269.01610000 32575169.28000000 6019277.73000000 32575236.08320000 6019290.70500000 32575326.05560000 6019306.43780000 32575364.97120000 6019316.77780000 32575392.30470000 6019327.42340000 32575414.62360000 6019340.69970000 32575449.25110000 6019365.34690000))"},{"fid":3748,"route":1,"wkt":"MULTILINESTRING ((32574358.13680000 6019290.60590000 32574379.20790000 6019307.66600000 32574427.35830000 6019343.97940000 32574472.90050000 6019374.87590000 32574549.88880000 6019429.16670000 32574567.28030000 6019437.56930000 32574581.15430000 6019443.04080000 32574597.19470000 6019447.92600000 32574623.24710000 6019452.28550000 32574640.44920000 6019452.70520000 32574663.84590000 6019450.40190000 32574689.13110000 6019444.94120000 32574703.82480000 6019439.31760000 32574718.91730000 6019432.92810000 32574771.79590000 6019403.84490000 32574832.71650000 6019369.14330000 32574840.64830000 6019367.08060000 32574868.40950000 6019351.73740000 32574884.49350000 6019342.75910000 32574891.65410000 6019334.71710000))"},{"fid":3752,"route":10,"wkt":"MULTILINESTRING ((32572826.53370000 6022523.90660000 32572816.51080000 6022511.48930000 32572798.07940000 6022488.08870000 32572780.28050000 6022461.70660000 32572759.92140000 6022429.99370000 32572732.21440000 6022386.35480000 32572714.23480000 6022358.79800000 32572707.63920000 6022347.23330000 32572690.20170000 6022314.34590000 32572677.46240000 6022289.81590000 32572673.30630000 6022281.00680000 32572671.49930000 6022274.72750000 32572670.95720000 6022269.84860000 32572671.13790000 6022262.80130000 32572671.86070000 6022255.39260000 32572671.68000000 6022250.06200000 32572669.82780000 6022244.48620000))"},{"fid":3766,"route":10,"wkt":"MULTILINESTRING ((32572206.83480000 6018103.41010000 32572211.71370000 6018102.59700000 32572215.32770000 6018099.34440000 32572218.58030000 6018093.83300000 32572261.22540000 6018022.90840000 32572321.85020000 6017929.75770000 32572375.51800000 6017870.30740000))"},{"fid":3767,"route":10,"wkt":"MULTILINESTRING ((32572094.98170000 6018089.76730000 32572105.55260000 6018091.39360000 32572129.40500000 6018098.53120000 32572143.22850000 6018101.42240000 32572206.83480000 6018103.41010000))"},{"fid":3768,"route":10,"wkt":"MULTILINESTRING ((32572095.88520000 6018128.52740000 32572089.74140000 6018115.33630000 32572086.03700000 6018101.69350000 32572085.94670000 6018097.08560000 32572087.93440000 6018093.20060000 32572091.18700000 6018090.76110000 32572094.98170000 6018089.76730000))"},{"fid":3769,"route":1,"wkt":"MULTILINESTRING ((32576643.72270000 6020881.76790000 32576657.21550000 6020963.94060000 32576690.28230000 6021144.73150000 32576722.37070000 6021311.43470000 32576729.80580000 6021321.02210000 32576742.52380000 6021325.32670000 32576760.52460000 6021325.13100000 32576766.00310000 6021326.69630000 32576768.35110000 6021331.39220000 32576778.13410000 6021378.15520000 32576799.87700000 6021418.87710000 32576805.86910000 6021447.73720000 32576813.81780000 6021460.08830000 32576828.15170000 6021471.46110000 32576844.05360000 6021474.28900000 32576846.51460000 6021475.74120000 32576847.04960000 6021478.15630000 32576847.08020000 6021918.79130000 32576857.10780000 6022107.60420000 32576881.95530000 6022289.88240000))"}];
+const SNAPSHOT = {
+  categories: [
+    { typ: "Premiumroute", total: 66, done: 49, prog: 17 },
+    { typ: "Hauptroute",   total: 38, done: 38, prog: 0 },
+    { typ: "Nebenroute",   total: 91, done: 91, prog: 0 }
+  ],
+  routes: [
+    { name: "Veloroute 1",  typ: "Premiumroute", total: 19, done: 11, prog: 8, km: 4.55 },
+    { name: "Veloroute 2",  typ: "Premiumroute", total: 16, done: 13, prog: 3, km: 1.17 },
+    { name: "Veloroute 3",  typ: "Premiumroute", total: 5,  done: 5,  prog: 0, km: 0 },
+    { name: "Veloroute 4",  typ: "Premiumroute", total: 6,  done: 6,  prog: 0, km: 0 },
+    { name: "Veloroute 5",  typ: "Premiumroute", total: 6,  done: 6,  prog: 0, km: 0 },
+    { name: "Veloroute 6",  typ: "Premiumroute", total: 1,  done: 1,  prog: 0, km: 0 },
+    { name: "Veloroute 7",  typ: "Premiumroute", total: 3,  done: 3,  prog: 0, km: 0 },
+    { name: "Veloroute 10", typ: "Premiumroute", total: 10, done: 4,  prog: 6, km: 1.77 },
+    { name: "Hauptrouten (unbenannt)", typ: "Hauptroute", total: 38, done: 38, prog: 0, km: 0 },
+    { name: "Nebenrouten (unbenannt)", typ: "Nebenroute", total: 91, done: 91, prog: 0, km: 0 }
+  ]
+};
+const TYP_COLORS = { Premiumroute: "#e30059", Hauptroute: "#009ee0", Nebenroute: "#9d62a0" };
+const TYP_WIDTH = { Premiumroute: 6, Hauptroute: 4, Nebenroute: 2.5 };
+const fmt = n => n.toLocaleString("de-DE");
+const pct = (a, b) => (b === 0 ? "0" : (100 * a / b).toLocaleString("de-DE", { maximumFractionDigits: 1 }));
+const NS = "http://www.w3.org/2000/svg";
+
+function parseWKT(w) {
+  const m = w.match(/MULTILINESTRING\s*\(\((.+)\)\)/s);
+  const toks = m[1].trim().split(/\s+/);
+  const pts = [];
+  for (let i = 0; i < toks.length; i += 2) pts.push([parseFloat(toks[i]), parseFloat(toks[i + 1])]);
+  return pts;
+}
+function utm32ToWgs84(E, N) {
+  if (E > 10000000) E -= 32000000;
+  const a = 6378137.0, f = 1 / 298.257223563, k0 = 0.9996, E0 = 500000, lon0 = 9;
+  const e2 = f * (2 - f), ep2 = e2 / (1 - e2);
+  const x = E - E0, y = N;
+  const M = y / k0;
+  const mu = M / (a * (1 - e2 / 4 - 3 * e2 * e2 / 64 - 5 * e2 * e2 * e2 / 256));
+  const e1 = (1 - Math.sqrt(1 - e2)) / (1 + Math.sqrt(1 - e2));
+  const J1 = 3 * e1 / 2 - 27 * e1 ** 3 / 32;
+  const J2 = 21 * e1 ** 2 / 16 - 55 * e1 ** 4 / 32;
+  const J3 = 151 * e1 ** 3 / 96;
+  const J4 = 1097 * e1 ** 4 / 512;
+  const fp = mu + J1 * Math.sin(2 * mu) + J2 * Math.sin(4 * mu) + J3 * Math.sin(6 * mu) + J4 * Math.sin(8 * mu);
+  const C1 = ep2 * Math.cos(fp) ** 2, T1 = Math.tan(fp) ** 2;
+  const N1 = a / Math.sqrt(1 - e2 * Math.sin(fp) ** 2);
+  const R1 = a * (1 - e2) / (1 - e2 * Math.sin(fp) ** 2) ** 1.5;
+  const D = x / (N1 * k0);
+  let lat = fp - (N1 * Math.tan(fp) / R1) * (D ** 2 / 2 - (5 + 3 * T1 + 10 * C1 - 4 * C1 ** 2 - 9 * ep2) * D ** 4 / 24 + (61 + 90 * T1 + 298 * C1 + 45 * T1 ** 2 - 252 * ep2 - 3 * C1 ** 2) * D ** 6 / 720);
+  let lon = (D - (1 + 2 * T1 + C1) * D ** 3 / 6 + (5 - 2 * C1 + 28 * T1 - 3 * C1 ** 2 + 8 * ep2 + 24 * T1 ** 2) * D ** 5 / 120) / Math.cos(fp);
+  return [lon * 180 / Math.PI + lon0, lat * 180 / Math.PI];
+}
+function segLengthKm(pts) {
+  let L = 0;
+  for (let i = 1; i < pts.length; i++) L += Math.hypot(pts[i][0] - pts[i - 1][0], pts[i][1] - pts[i - 1][1]);
+  return L / 1000;
+}
+async function loadLive() {
+  const r1 = await fetch(API + "?page=1&limit=50");
+  if (!r1.ok) throw new Error("HTTP " + r1.status);
+  const first = await r1.json();
+  let data = first.data.slice();
+  const pages = Math.ceil(first.total / 50);
+  for (let p = 2; p <= pages; p++) {
+    const r = await fetch(API + "?page=" + p + "&limit=50");
+    if (!r.ok) throw new Error("HTTP " + r.status);
+    data = data.concat((await r.json()).data);
+  }
+  return data;
+}
+function aggregate(features) {
+  const cats = {};
+  const routes = {};
+  let kmProg = 0;
+  features.forEach(f => {
+    const typ = f.Typ, stand = f.Stand;
+    cats[typ] = cats[typ] || { typ, total: 0, done: 0, prog: 0 };
+    cats[typ].total++;
+    if (stand === "umgesetzt") cats[typ].done++; else cats[typ].prog++;
+    const key = f.Name || (typ === "Hauptroute" ? "Hauptrouten (unbenannt)" : "Nebenrouten (unbenannt)");
+    routes[key] = routes[key] || { name: key, typ, total: 0, done: 0, prog: 0, km: 0 };
+    routes[key].total++;
+    if (stand === "umgesetzt") routes[key].done++; else { routes[key].prog++; kmProg += segLengthKm(parseWKT(f.Shape)); }
+    routes[key].km += stand === "in Umsetzung" ? segLengthKm(parseWKT(f.Shape)) : 0;
+  });
+  const order = ["Premiumroute", "Hauptroute", "Nebenroute"];
+  return {
+    categories: order.map(t => cats[t]).filter(Boolean),
+    routes: Object.values(routes).sort((a, b) => {
+      const na = /^Veloroute (\d+)$/.exec(a.name), nb = /^Veloroute (\d+)$/.exec(b.name);
+      if (na && nb) return (+na[1]) - (+nb[1]);
+      if (na) return -1;
+      return a.typ.localeCompare(b.typ, "de");
+    }),
+    kmProg
+  };
+}
+
+let CATEGORIES = SNAPSHOT.categories, ROUTES = SNAPSHOT.routes, KM_PROG = 7.49;
+let filterTyp = "alle", filterStand = "alle";
+
+function renderKPIs() {
+  const total = ROUTES.reduce((s, r) => s + r.total, 0);
+  const done = ROUTES.reduce((s, r) => s + r.done, 0);
+  const prog = ROUTES.reduce((s, r) => s + r.prog, 0);
+  document.getElementById("kpi-total").textContent = fmt(total);
+  document.getElementById("kpi-total-sub").textContent =
+    CATEGORIES.map(c => c.total + " " + c.typ.toLowerCase().replace("route", "routen")).join(", ");
+  document.getElementById("kpi-done").textContent = fmt(done);
+  document.getElementById("kpi-done-sub").textContent = pct(done, total) + " % aller Abschnitte";
+  document.getElementById("kpi-prog").textContent = fmt(prog);
+  document.getElementById("kpi-prog-sub").textContent = pct(prog, total) + " % aller Abschnitte";
+  document.getElementById("kpi-km").textContent = KM_PROG.toLocaleString("de-DE", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + " km";
+}
+function renderDonut() {
+  const svg = document.getElementById("donut");
+  svg.innerHTML = "";
+  const total = ROUTES.reduce((s, r) => s + r.total, 0);
+  const done = ROUTES.reduce((s, r) => s + r.done, 0);
+  const r = 45, c = 2 * Math.PI * r, cx = 60, cy = 60, frac = total ? done / total : 0;
+  const bg = document.createElementNS(NS, "circle");
+  bg.setAttribute("cx", cx); bg.setAttribute("cy", cy); bg.setAttribute("r", r);
+  bg.setAttribute("fill", "none"); bg.setAttribute("stroke", "#e6ebf0"); bg.setAttribute("stroke-width", 18);
+  svg.appendChild(bg);
+  const arc = document.createElementNS(NS, "circle");
+  arc.setAttribute("cx", cx); arc.setAttribute("cy", cy); arc.setAttribute("r", r);
+  arc.setAttribute("fill", "none"); arc.setAttribute("stroke", "#4faf6c"); arc.setAttribute("stroke-width", 18);
+  arc.setAttribute("stroke-dasharray", (frac * c) + " " + ((1 - frac) * c));
+  arc.setAttribute("transform", "rotate(-90 " + cx + " " + cy + ")");
+  svg.appendChild(arc);
+  const t = document.createElementNS(NS, "text");
+  t.setAttribute("x", cx); t.setAttribute("y", cy + 6); t.setAttribute("text-anchor", "middle");
+  t.setAttribute("font-size", "20"); t.setAttribute("font-weight", "700"); t.setAttribute("fill", "#00223f");
+  t.textContent = pct(done, total) + " %";
+  svg.appendChild(t);
+}
+function renderBars() {
+  const svg = document.getElementById("bars");
+  svg.innerHTML = "";
+  const max = Math.max(...CATEGORIES.map(c => c.total));
+  const bw = 70, gap = 45, x0 = 55, baseY = 200, hMax = 160;
+  CATEGORIES.forEach((c, i) => {
+    const x = x0 + i * (bw + gap);
+    const hDone = c.done / max * hMax, hProg = c.prog / max * hMax;
+    const col = TYP_COLORS[c.typ] || "#00223f";
+    const r1 = document.createElementNS(NS, "rect");
+    r1.setAttribute("x", x); r1.setAttribute("y", baseY - hDone); r1.setAttribute("width", bw); r1.setAttribute("height", hDone);
+    r1.setAttribute("fill", col); r1.setAttribute("rx", 3);
+    svg.appendChild(r1);
+    if (c.prog > 0) {
+      const r2 = document.createElementNS(NS, "rect");
+      r2.setAttribute("x", x); r2.setAttribute("y", baseY - hDone - hProg); r2.setAttribute("width", bw); r2.setAttribute("height", hProg);
+      r2.setAttribute("fill", "#1f82c0"); r2.setAttribute("rx", 3);
+      svg.appendChild(r2);
+    }
+    const lbl = document.createElementNS(NS, "text");
+    lbl.setAttribute("x", x + bw / 2); lbl.setAttribute("y", baseY - hDone - hProg - 8);
+    lbl.setAttribute("text-anchor", "middle"); lbl.setAttribute("font-size", "14"); lbl.setAttribute("font-weight", "700");
+    lbl.setAttribute("fill", "#00223f"); lbl.textContent = fmt(c.total);
+    svg.appendChild(lbl);
+    const cap = document.createElementNS(NS, "text");
+    cap.setAttribute("x", x + bw / 2); cap.setAttribute("y", baseY + 18);
+    cap.setAttribute("text-anchor", "middle"); cap.setAttribute("font-size", "12"); cap.setAttribute("fill", "#5b6b7a");
+    cap.textContent = c.typ;
+    svg.appendChild(cap);
+  });
+  const axis = document.createElementNS(NS, "line");
+  axis.setAttribute("x1", 30); axis.setAttribute("y1", baseY); axis.setAttribute("x2", 400); axis.setAttribute("y2", baseY);
+  axis.setAttribute("stroke", "#dde4ea");
+  svg.appendChild(axis);
+}
+function renderTable() {
+  const tbody = document.querySelector("#routen-tabelle tbody");
+  tbody.innerHTML = "";
+  ROUTES.forEach(r => {
+    if (filterTyp !== "alle" && r.typ !== filterTyp) return;
+    if (filterStand === "umgesetzt" && r.done === 0) return;
+    if (filterStand === "in Umsetzung" && r.prog === 0) return;
+    const pctDone = Math.round(100 * r.done / r.total);
+    const typBadge = { Premiumroute: "premium", Hauptroute: "haupt", Nebenroute: "neben" }[r.typ];
+    const status = r.prog > 0 ? '<span class="badge prog">in Umsetzung</span>' : '<span class="badge done">umgesetzt</span>';
+    const tr = document.createElement("tr");
+    tr.innerHTML =
+      "<td><strong>" + r.name + "</strong></td>" +
+      '<td><span class="badge ' + typBadge + '">' + r.typ + "</span></td>" +
+      '<td class="num">' + fmt(r.total) + "</td>" +
+      '<td class="num">' + fmt(r.done) + "</td>" +
+      '<td class="num">' + fmt(r.prog) + "</td>" +
+      '<td class="num">' + (r.km > 0 ? r.km.toLocaleString("de-DE", { minimumFractionDigits: 2 }) + " km" : "–") + "</td>" +
+      '<td style="min-width:140px"><div class="bar-wrap"><div class="bar-done" style="width:' + pctDone + '%"></div><div class="bar-prog" style="width:' + (100 - pctDone) + '%"></div></div></td>' +
+      "<td>" + status + "</td>";
+    tbody.appendChild(tr);
+  });
+}
+
+function initMap(features) {
+  const map = L.map("map").setView([54.3233, 10.1394], 12);
+  L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
+    maxZoom: 19,
+    attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>-Mitwirkende'
+  }).addTo(map);
+  const layerDone = L.layerGroup(), layerProg = L.layerGroup();
+  const bounds = L.latLngBounds([]);
+  features.forEach(f => {
+    const pts = parseWKT(f.Shape).map(([E, N]) => { const [lon, lat] = utm32ToWgs84(E, N); return [lat, lon]; });
+    const color = TYP_COLORS[f.Typ] || "#00223f";
+    const base = { color, weight: (TYP_WIDTH[f.Typ] || 3) + (f.Stand === "in Umsetzung" ? 1.5 : 0), opacity: 0.95 };
+    const style = f.Stand === "in Umsetzung" ? Object.assign({ dashArray: "10 7" }, base) : base;
+    const line = L.polyline(pts, style);
+    line.bindPopup("<strong>" + (f.Name || f.Typ) + "</strong><br>Typ: " + f.Typ + "<br>Stand: " + f.Stand);
+    (f.Stand === "in Umsetzung" ? layerProg : layerDone).addLayer(line);
+    bounds.extend(pts);
+  });
+  layerDone.addTo(map); layerProg.addTo(map);
+  L.control.layers(null, {
+    "umgesetzt": layerDone,
+    "in Umsetzung": layerProg
+  }, { collapsed: false }).addTo(map);
+  if (bounds.isValid()) map.fitBounds(bounds.pad(0.08));
+}
+
+document.querySelectorAll("[data-filter-typ]").forEach(btn => {
+  btn.addEventListener("click", () => {
+    document.querySelectorAll("[data-filter-typ]").forEach(b => b.classList.remove("active"));
+    btn.classList.add("active"); filterTyp = btn.dataset.filterTyp; renderTable();
+  });
+});
+document.querySelectorAll("[data-filter-stand]").forEach(btn => {
+  btn.addEventListener("click", () => {
+    document.querySelectorAll("[data-filter-stand]").forEach(b => b.classList.remove("active"));
+    btn.classList.add("active"); filterStand = btn.dataset.filterStand; renderTable();
+  });
+});
+
+renderKPIs(); renderDonut(); renderBars(); renderTable();
+
+let mapFeatures = null;
+loadLive().then(data => {
+  const agg = aggregate(data);
+  CATEGORIES = agg.categories; ROUTES = agg.routes; KM_PROG = agg.kmProg;
+  renderKPIs(); renderDonut(); renderBars(); renderTable();
+  mapFeatures = data;
+  document.getElementById("map-note").textContent = "Kartendaten live geladen: " + fmt(data.length) + " Abschnitte (Open-Data-Schnittstelle, abgerufen im Browser).";
+  initMap(mapFeatures);
+}).catch(err => {
+  document.getElementById("map-note").textContent =
+    "Live-Abruf nicht möglich (" + err.message + ") – Karte zeigt den eingebetteten Stand („in Umsetzung“-Abschnitte, Stand: " + "13.11.2026" + "). Kennzahlen aus eingebettetem Snapshot.";
+  mapFeatures = FALLBACK_SEGMENTS.map(s => ({ Name: "Veloroute " + s.route, Typ: "Premiumroute", Stand: "in Umsetzung", Shape: s.wkt }));
+  initMap(mapFeatures);
+});
+</script>
+</body>
+</html>
